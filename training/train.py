@@ -228,11 +228,13 @@ def train(
 
 
 @torch.no_grad()
-def evaluate(model, eval_loader, device="cpu"):
+def evaluate(model, eval_loader, device="cpu", max_batches: int = 50):
     model.eval()
     total = 0.0
     n = 0
     for inputs, targets in eval_loader:
+        if n >= max_batches:
+            break
         inputs = inputs.to(device)
         targets = targets.to(device)
         logits = model(inputs)
