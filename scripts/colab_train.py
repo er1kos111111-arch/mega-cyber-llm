@@ -112,6 +112,13 @@ def main():
                    help="max docs per dataset in real-data mode (0 = all)")
     p.add_argument("--max-files", type=int, default=0,
                    help="max parquet files per dataset in real-data mode (0 = all)")
+    # SFT mode
+    p.add_argument("--sft", action="store_true",
+                   help="run SFT after pretraining (makes it a chat assistant)")
+    p.add_argument("--sft-synthetic", type=int, default=20000,
+                   help="synthetic Russian dialogues for SFT")
+    p.add_argument("--sft-epochs", type=int, default=3)
+    p.add_argument("--sft-out", default="checkpoints_sft")
     args = p.parse_args()
 
     device = detect_device()
@@ -136,6 +143,10 @@ def main():
         print(f"[colab] tokenizer vocab: {vocab_size}")
         tokenize_conversations(args, tokenizer, vocab_size)
         data_note = f"conv tokens: {gen_report['tokens']:,}"
+
+    # tokenizer is shared by all later phases
+    from tokenizer.tokenizer import CyberTokenizer
+    tokenizer = CyberTokenizer(args.tokenizer_dir)
 
     # ---- Phase 3: build model + train ----------------------------------
     from model.architecture import MCLLM
@@ -171,14 +182,35 @@ def main():
 
     train(run, train_loader=train_loader, eval_loader=eval_loader, resume=False)
 
-    # ---- Phase 4: sample generation ------------------------------------
+    # ---- Phase 5: SFT (optional) --------------------------------------
+    if args.sft:
+        from data.sft_data import build_sft_messages
+        from post_training.sft import sft_train
+        print("\n" + "=" * 52)
+        print("SFT: turning the model into a chat assistant")
+        print("=" * 52)
+        messages = build_sft_messages(synthetic_n=args.sft_synthetic, seed=args.seed)
+        sft_train(model, tokenizer, messages, out_dir=args.sft_out,
+                  epochs=args.sft_epochs, batch_size=args.batch, device=device)
+
+    # ---- Phase 6: chat-style demo -------------------------------------
     from inference.loader import load_model
     from inference.generate import generate
-    model, tok, meta = load_model(args.out, args.tokenizer_dir, device=device)
-    for prompt in ["Привет! Расскажи о себе.", "Как дела?", "Мне сегодня скучно."]:
-        ids = torch.tensor([tok.encode(prompt)], dtype=torch.long, device=device)
-        out = generate(model, ids, max_new_tokens=40, temperature=0.7, seed=1)
-        print(f"  Q: {prompt}\n  A: {tok.decode(out[0].tolist())[len(prompt):]}\n")
+    demo_dir = args.sft_out if args.sft else args.out
+    model, tok, meta = load_model(demo_dir, args.tokenizer_dir, device=device)
+    demo_msgs = [{"role": "user", "content": "Привет! Расскажи о себе."},
+                 {"role": "user", "content": "Как дела?"},
+                 {"role": "user", "content": "Мне сегодня скучно, чем заняться?"}]
+    print("\n" + "=" * 52)
+    print("Chat demo:")
+    for m in demo_msgs:
+        ids = tok.tokenize_chat([m], add_generation_prompt=True)
+        prompt_len = len(ids)
+        in_ids = torch.tensor([ids], dtype=torch.long, device=device)
+        out = generate(model, in_ids, max_new_tokens=60, temperature=0.7,
+                       eos_token_id=tok.eos_token_id, top_p=0.95, seed=1)
+        reply = tok.decode(out[0].tolist()[prompt_len:]).strip()
+        print(f"  User: {m['content']}\n  Assistant: {reply}\n")
 
 
 if __name__ == "__main__":

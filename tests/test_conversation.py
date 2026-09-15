@@ -92,12 +92,14 @@ def test_resource_monitor():
 def test_streaming_driver_creates_shards(tmp_path, tokenizer_dir):
     from data.conversation.generate_dataset import run, _scan_shards
 
+    # high RAM/disk thresholds so the test is not affected by host RAM usage
+    limits = ResourceLimits(max_dialogues=120, ram_fraction=0.99, disk_limit_gb=0.0)
+
     out = str(tmp_path / "shards")
     report = run(
         out_dir=out, tokenizer_dir=tokenizer_dir, seed=0,
         vocab_size=512, dialogues_per_shard=50, tokens_per_shard=200_000,
-        log_every=1000,
-        limits=ResourceLimits(max_dialogues=120),
+        log_every=1000, limits=limits,
     )
     assert report["dialogues"] >= 100
     assert report["tokens"] > 0
@@ -113,7 +115,7 @@ def test_streaming_driver_creates_shards(tmp_path, tokenizer_dir):
         out_dir=out, tokenizer_dir=tokenizer_dir, seed=1,
         vocab_size=512, dialogues_per_shard=50, tokens_per_shard=200_000,
         log_every=1000,
-        limits=ResourceLimits(max_dialogues=200),
+        limits=ResourceLimits(max_dialogues=200, ram_fraction=0.99, disk_limit_gb=0.0),
     )
     assert report2["dialogues"] >= report["dialogues"]
 

@@ -63,8 +63,8 @@ class ChatServer:
         repetition_penalty = payload.get("repetition_penalty", 1.0)
         stop = payload.get("stop", None)
 
-        prompt = format_messages(self.tokenizer, messages)
-        input_ids = torch.tensor([self.tokenizer.encode(prompt)], dtype=torch.long,
+        prompt_ids = self.tokenizer.tokenize_chat(messages, add_generation_prompt=True)
+        input_ids = torch.tensor([prompt_ids], dtype=torch.long,
                                  device=next(self.model.parameters()).device)
 
         stop_ids = [self.tokenizer.eos_token_id]
@@ -77,11 +77,8 @@ class ChatServer:
             top_p=top_p, top_k=top_k, repetition_penalty=repetition_penalty,
             stop_token_ids=stop_ids,
         )
-        text = self.tokenizer.decode(output_ids[0].tolist())
-        # strip the prompt prefix so we only return the assistant reply
-        prompt_ids = self.tokenizer.encode(prompt)
         reply_ids = output_ids[0].tolist()[len(prompt_ids):]
-        reply = self.tokenizer.decode(reply_ids)
+        reply = self.tokenizer.decode(reply_ids).strip()
 
         return {
             "id": f"chatcmpl-{int(time.time() * 1000)}",

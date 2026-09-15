@@ -1,8 +1,8 @@
-"""Interactive chat CLI for MC-LLM.
+"""Interactive chat CLI for MC-LLM (SFT model).
 
-    python scripts/chat.py --checkpoint checkpoints
+    python scripts/chat.py --checkpoint checkpoints_sft
 
-Provides a simple REPL in the MC-LLM chat format.
+Provides a simple REPL using the MC-LLM chat template.
 """
 from __future__ import annotations
 
@@ -18,24 +18,14 @@ from inference.generate import generate
 from inference.loader import load_model
 
 
-def build_prompt(tokenizer, system: str, history: list) -> str:
-    parts = []
-    if system:
-        parts.append(f"<SYSTEM>\n{system}\n")
-    for user_msg, asst_msg in history:
-        parts.append(f"<USER>\n{user_msg}\n")
-        if asst_msg:
-            parts.append(f"<ASSISTANT>\n{asst_msg}\n")
-    return "".join(parts)
-
-
 def main():
     parser = argparse.ArgumentParser(description="MC-LLM chat")
-    parser.add_argument("--checkpoint", default="checkpoints")
+    parser.add_argument("--checkpoint", default="checkpoints_sft")
     parser.add_argument("--tokenizer", default="tokenizer/tokenizer_config.json")
     parser.add_argument("--temperature", type=float, default=0.8)
+    parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--max-tokens", type=int, default=256)
-    parser.add_argument("--system", default="You are MEGA-CYBER LLM, a helpful assistant.")
+    parser.add_argument("--system", default="Ты — MEGA-CYBER LLM, дружелюбный и полезный собеседник.")
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -43,7 +33,7 @@ def main():
     n_params = sum(p.numel() for p in model.parameters())
 
     print("=" * 52)
-    print("MEGA-CYBER LLM")
+    print("MEGA-CYBER LLM (SFT)")
     print(f"Checkpoint:  {args.checkpoint}")
     print(f"Tokenizer:   CyberTokenizer")
     print(f"Parameters:  {n_params:,}")
@@ -51,7 +41,10 @@ def main():
     print("=" * 52)
     print("Type 'exit' to quit.\n")
 
-    history = []
+    messages = []
+    if args.system:
+        messages.append({"role": "system", "content": args.system})
+
     while True:
         try:
             user = input("User: ")
@@ -61,13 +54,16 @@ def main():
         if user.strip().lower() in ("exit", "quit"):
             break
 
-        prompt = build_prompt(tokenizer, args.system, history) + f"<USER>\n{user}\n<ASSISTANT>\n"
-        ids = torch.tensor([tokenizer.encode(prompt)], dtype=torch.long, device=device)
-        out = generate(model, ids, max_new_tokens=args.max_tokens,
+        messages.append({"role": "user", "content": user})
+        ids = tokenizer.tokenize_chat(messages, add_generation_prompt=True)
+        prompt_len = len(ids)
+        prompt_ids = torch.tensor([ids], dtype=torch.long, device=device)
+        out = generate(model, prompt_ids, max_new_tokens=args.max_tokens,
                        eos_token_id=tokenizer.eos_token_id,
-                       temperature=args.temperature)
-        reply = tokenizer.decode(out[0].tolist())[len(prompt):].strip()
-        history.append((user, reply))
+                       temperature=args.temperature, top_p=args.top_p)
+        new_ids = out[0].tolist()[prompt_len:]
+        reply = tokenizer.decode(new_ids).strip()
+        messages.append({"role": "assistant", "content": reply})
         print(f"Assistant: {reply}\n")
 
 

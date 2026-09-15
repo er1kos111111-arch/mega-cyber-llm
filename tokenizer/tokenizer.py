@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .trainer import pre_tokenize
@@ -66,6 +67,11 @@ class CyberTokenizer:
         self._encode_cache: Dict[bytes, List[int]] = {}
         self._cache_limit = 200_000
 
+        # compiled matcher for special tokens (longest-first) so that strings
+        # like "<USER>" are emitted as their special id, not byte-split
+        self._special_sorted = sorted(self.special_tokens, key=len, reverse=True)
+        self._special_re = re.compile("|".join(re.escape(t) for t in self._special_sorted))
+
     # ------------------------------------------------------------------
     def __len__(self) -> int:
         return self.vocab_size
@@ -110,7 +116,35 @@ class CyberTokenizer:
         return ids
 
     def encode(self, text: str) -> List[int]:
-        """Encode text into token IDs (no BOS/EOS added)."""
+        """Encode text into token IDs (no BOS/EOS added).
+
+        Strings containing special tokens (e.g. ``<USER>``) emit those
+        special tokens as their dedicated ids.
+        """
+        if self._special_re.search(text):
+            return self.encode_with_special(text)
+        ids: List[int] = []
+        for piece in pre_tokenize(text):
+            if piece.isspace():
+                ids.extend(list(piece.encode("utf-8")))
+            else:
+                ids.extend(self._encode_word(piece.encode("utf-8")))
+        return ids
+
+    def encode_with_special(self, text: str) -> List[int]:
+        """Encode text, mapping special tokens to their dedicated ids."""
+        ids: List[int] = []
+        pos = 0
+        for m in self._special_re.finditer(text):
+            if m.start() > pos:
+                ids.extend(self._encode_segment(text[pos:m.start()]))
+            ids.append(self.special_map[m.group(0)])
+            pos = m.end()
+        if pos < len(text):
+            ids.extend(self._encode_segment(text[pos:]))
+        return ids
+
+    def _encode_segment(self, text: str) -> List[int]:
         ids: List[int] = []
         for piece in pre_tokenize(text):
             if piece.isspace():
@@ -157,10 +191,55 @@ class CyberTokenizer:
         parts = []
         for m in messages:
             role = role_map.get(m.get("role", "user"), "<USER>")
-            parts.append(f"{role}\n{m.get('content', '')}\n")
+            parts.append(f"{role}{m.get('content', '')}")
         if add_generation_prompt:
-            parts.append("<ASSISTANT>\n")
+            parts.append("<ASSISTANT>")
         return "".join(parts)
+
+    def tokenize_chat(self, messages: List[dict], add_bos: bool = True,
+                      add_generation_prompt: bool = True) -> List[int]:
+        """Tokenize a chat into ids using the special role tokens.
+
+        Format: ``<BOS><USER>...<ASSISTANT>...<EOS>...<ASSISTANT>``
+        """
+        role_map = {"system": "<SYSTEM>", "user": "<USER>",
+                    "assistant": "<ASSISTANT>", "tool": "<TOOL>"}
+        ids: List[int] = []
+        if add_bos:
+            ids.append(self.bos_token_id)
+        for m in messages:
+            role = m.get("role", "user")
+            ids.append(self.special_map[role_map.get(role, "<USER>")])
+            ids.extend(self.encode(m.get("content", "")))
+            if role == "assistant":
+                ids.append(self.eos_token_id)
+        if add_generation_prompt:
+            ids.append(self.special_map["<ASSISTANT>"])
+        return ids
+
+    def tokenize_chat_with_labels(self, messages: List[dict]) -> Tuple[List[int], List[int]]:
+        """Tokenize a chat and produce loss labels (supervise assistant only).
+
+        Returns ``(input_ids, labels)`` where every non-assistant token is
+        ``-100`` (ignored by cross-entropy).
+        """
+        role_map = {"system": "<SYSTEM>", "user": "<USER>",
+                    "assistant": "<ASSISTANT>", "tool": "<TOOL>"}
+        input_ids: List[int] = [self.bos_token_id]
+        labels: List[int] = [-100]
+        for m in messages:
+            role = m.get("role", "user")
+            content_ids = self.encode(m.get("content", ""))
+            input_ids.append(self.special_map[role_map.get(role, "<USER>")])
+            labels.append(-100)
+            input_ids.extend(content_ids)
+            if role == "assistant":
+                labels.extend(content_ids)
+                input_ids.append(self.eos_token_id)
+                labels.append(self.eos_token_id)
+            else:
+                labels.extend([-100] * len(content_ids))
+        return input_ids, labels
 
     def save_config(self, path: Optional[str] = None) -> None:
         """Persist the tokenizer config json (metadata only; vocab/merges are

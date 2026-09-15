@@ -251,7 +251,19 @@ memory and device utilization for a given model size.
 
 ## 13–16. Chat model, RL, generation, interface
 
-* **SFT** — `post_training/sft.py` (assistant-token loss masking).
+* **SFT** — `post_training/sft.py` (full loop: assistant-token loss masking,
+  mixed precision, warmup+cosine, checkpointing).  Turns the pretrained model
+  into a conversational assistant.
+
+  ```bash
+  # after pretraining:
+  python scripts/sft_train.py --checkpoint checkpoints --synthetic 20000
+  # or all-in-one (pretrain + SFT):
+  python scripts/colab_train.py --sft --sft-synthetic 20000 --steps 1500
+  ```
+
+  The chat format uses the real special tokens (`<SYSTEM>` / `<USER>` /
+  `<ASSISTANT>` / `<EOS>`), and loss is computed only on assistant tokens.
 * **DPO / RL** — `post_training/dpo.py`, `post_training/rl.py` (reward model
   + GRPO).
 * **Generation** — `inference/generate.py` (greedy, temperature, top-k,
