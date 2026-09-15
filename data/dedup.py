@@ -95,17 +95,19 @@ class MinHashDedup:
         if not shingles:
             return False
         sig = self._minhash(shingles)
-        # LSH: check candidates that share any band with the new doc
+        # LSH: gather candidates that share any band with the new doc
         candidates: Set[int] = set()
         for band in range(self._num_bands):
             key = tuple(sig[band * self._band_size:(band + 1) * self._band_size])
-            for cid in self._bands[(band, key)]:
-                candidates.add(cid)
-            self._bands[(band, key)].append(self._next_id)
+            candidates.update(self._bands[(band, key)])
         for cid in candidates:
             if self._jaccard(sig, self._signatures[cid]) >= self.threshold:
                 return True
+        # not a duplicate: register signature and its bands consistently
         self._signatures[self._next_id] = sig
+        for band in range(self._num_bands):
+            key = tuple(sig[band * self._band_size:(band + 1) * self._band_size])
+            self._bands[(band, key)].append(self._next_id)
         self._next_id += 1
         return False
 
