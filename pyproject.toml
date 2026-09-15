@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mega-cyber-llm"
+version = "0.1.0"
+description = "MEGA-CYBER LLM (MC-LLM): a from-scratch decoder-only language model with a from-scratch BPE tokenizer (CyberTokenizer)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "MEGA-CYBER LLM team" }]
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "tqdm>=4.65",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+data = ["pyarrow>=14.0", "pandas>=2.0"]
+serve = ["flask>=3.0"]
+test = ["pytest>=7.4"]
+
+[project.scripts]
+mc-train = "scripts.train:main"
+mc-generate = "scripts.generate:main"
+mc-tokenize = "scripts.train_tokenizer:main"
+mc-prepare = "scripts.prepare_data:main"
+mc-chat = "scripts.chat:main"
+mc-evaluate = "scripts.evaluate:main"
+
+[tool.setuptools]
+packages = [
+    "model", "tokenizer", "data", "training", "inference",
+    "evaluation", "post_training", "scripts",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

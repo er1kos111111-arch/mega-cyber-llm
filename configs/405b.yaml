@@ -1,0 +1,51 @@
+# MEGA-CYBER LLM — 405B configuration (~405.8B params)
+name: mc-llm-405b
+
+model:
+  vocab_size: 128000
+  hidden_size: 16384
+  num_layers: 126
+  num_attention_heads: 128
+  num_kv_heads: 8
+  intermediate_size: 53248
+  max_position_embeddings: 131072
+  rope_theta: 500000.0
+  rms_norm_eps: 1e-5
+  dropout: 0.0
+  tie_word_embeddings: false
+  use_bias: false
+  dtype: bfloat16
+
+training:
+  global_batch_size: 16777216
+  micro_batch_size: 1
+  sequence_length: 8192
+  learning_rate: 1.2e-4
+  min_learning_rate: 1.2e-5
+  optimizer: adamw
+  scheduler: warmup_cosine
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  warmup_steps: 2000
+  max_steps: 800000
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 2048
+  dtype: bfloat16
+  log_interval: 10
+  eval_interval: 500
+  save_interval: 1000
+  seed: 42
+
+distributed:
+  tensor_parallel: 8
+  pipeline_parallel: 16
+  data_parallel: 256
+  sequence_parallel: true
+  fsdp: true
+  use_gradient_checkpointing: true
+  backend: nccl
+
+data_dir: data/shards
+out_dir: checkpoints
+tokenizer_path: tokenizer/tokenizer_config.json

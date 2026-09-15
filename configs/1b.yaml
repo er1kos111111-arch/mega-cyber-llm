@@ -1,0 +1,51 @@
+# MEGA-CYBER LLM — 1B configuration (~931M params)
+name: mc-llm-1b
+
+model:
+  vocab_size: 32768
+  hidden_size: 1536
+  num_layers: 24
+  num_attention_heads: 24
+  num_kv_heads: 8
+  intermediate_size: 6144
+  max_position_embeddings: 8192
+  rope_theta: 10000.0
+  rms_norm_eps: 1e-5
+  dropout: 0.0
+  tie_word_embeddings: false
+  use_bias: false
+  dtype: bfloat16
+
+training:
+  global_batch_size: 2097152
+  micro_batch_size: 8
+  sequence_length: 4096
+  learning_rate: 3.0e-4
+  min_learning_rate: 3.0e-5
+  optimizer: adamw
+  scheduler: warmup_cosine
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  warmup_steps: 2000
+  max_steps: 200000
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 64
+  dtype: bfloat16
+  log_interval: 10
+  eval_interval: 500
+  save_interval: 1000
+  seed: 42
+
+distributed:
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  data_parallel: 8
+  sequence_parallel: false
+  fsdp: false
+  use_gradient_checkpointing: true
+  backend: nccl
+
+data_dir: data/shards
+out_dir: checkpoints
+tokenizer_path: tokenizer/tokenizer_config.json
