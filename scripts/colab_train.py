@@ -87,6 +87,7 @@ def main():
     p.add_argument("--ram-fraction", type=float, default=0.85)
     p.add_argument("--disk-limit-gb", type=float, default=6.0)
     p.add_argument("--conv-dir", default="data/conversation/shards")
+    p.add_argument("--raw-dir", default="data/raw")
     p.add_argument("--tokenizer-dir", default="tokenizer")
     p.add_argument("--data-dir", default="data/shards")
     # model + training
@@ -104,20 +105,37 @@ def main():
     p.add_argument("--log-interval", type=int, default=20)
     p.add_argument("--save-interval", type=int, default=200)
     p.add_argument("--seed", type=int, default=42)
+    # real-data mode
+    p.add_argument("--real-data", action="store_true",
+                   help="download real HF data instead of synthetic conversations")
+    p.add_argument("--max-rows", type=int, default=0,
+                   help="max docs per dataset in real-data mode (0 = all)")
+    p.add_argument("--max-files", type=int, default=0,
+                   help="max parquet files per dataset in real-data mode (0 = all)")
     args = p.parse_args()
 
     device = detect_device()
     torch.manual_seed(args.seed)
 
-    # ---- Phase 1: conversational dataset -------------------------------
-    gen_report = generate_conversations(args)
+    if args.real_data:
+        # ---- Phase 1+2 (real): download -> tokenizer -> shards ----------
+        from scripts.build_real_dataset import download_real_data, train_tokenizer, shard_real_data
+        download_real_data(args.raw_dir, args.max_rows, args.max_files)
+        vocab_size = train_tokenizer(args.raw_dir, args.tokenizer_dir, args.vocab_size)
+        shard_real_data(args.raw_dir, args.tokenizer_dir, args.data_dir,
+                        vocab_size, args.seq_len)
+        data_note = f"real data (vocab {vocab_size})"
+    else:
+        # ---- Phase 1: synthetic conversational dataset ------------------
+        gen_report = generate_conversations(args)
 
-    # ---- Phase 2: tokenizer + training shards --------------------------
-    from tokenizer.tokenizer import CyberTokenizer
-    tokenizer = CyberTokenizer(args.tokenizer_dir)
-    vocab_size = len(tokenizer)
-    print(f"[colab] tokenizer vocab: {vocab_size}")
-    manifest = tokenize_conversations(args, tokenizer, vocab_size)
+        # ---- Phase 2: tokenizer + training shards -----------------------
+        from tokenizer.tokenizer import CyberTokenizer
+        tokenizer = CyberTokenizer(args.tokenizer_dir)
+        vocab_size = len(tokenizer)
+        print(f"[colab] tokenizer vocab: {vocab_size}")
+        tokenize_conversations(args, tokenizer, vocab_size)
+        data_note = f"conv tokens: {gen_report['tokens']:,}"
 
     # ---- Phase 3: build model + train ----------------------------------
     from model.architecture import MCLLM
@@ -145,10 +163,10 @@ def main():
     eval_loader = build_dataloader(args.data_dir, args.seq_len, args.batch, seed=args.seed + 1)
 
     print("=" * 52)
-    print("MEGA-CYBER LLM — conversational training")
+    print("MEGA-CYBER LLM — training")
     print(f"  parameters: {cfg.total_parameters():,}")
     print(f"  vocab: {vocab_size}, context: {args.seq_len}")
-    print(f"  conv tokens: {gen_report['tokens']:,}, steps: {args.steps}")
+    print(f"  {data_note}, steps: {args.steps}")
     print("=" * 52)
 
     train(run, train_loader=train_loader, eval_loader=eval_loader, resume=False)

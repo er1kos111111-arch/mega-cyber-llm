@@ -5,8 +5,8 @@ pyyaml>=6.0
 tqdm>=4.65
 psutil>=5.9
 
-# Data (optional: Parquet/Arrow support)
-# pyarrow>=14.0
+# Data (real dataset downloader + Parquet/Arrow support)
+pyarrow>=14.0
 # pandas>=2.0
 
 # HTTP server (optional)
