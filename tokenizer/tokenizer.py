@@ -155,9 +155,12 @@ class CyberTokenizer:
 
     def decode(self, ids: Iterable[int], skip_special_tokens: bool = False) -> str:
         """Decode token IDs back into text."""
+        special_ids = set(self.special_map.values())
         out = bytearray()
         for tid in ids:
             tid = int(tid)
+            if skip_special_tokens and tid in special_ids:
+                continue
             if tid in self.id_to_bytes:
                 out.extend(self.id_to_bytes[tid])
             else:

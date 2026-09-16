@@ -62,7 +62,7 @@ def main():
                        eos_token_id=tokenizer.eos_token_id,
                        temperature=args.temperature, top_p=args.top_p)
         new_ids = out[0].tolist()[prompt_len:]
-        reply = tokenizer.decode(new_ids).strip()
+        reply = tokenizer.decode(new_ids, skip_special_tokens=True).strip()
         messages.append({"role": "assistant", "content": reply})
         print(f"Assistant: {reply}\n")
 

@@ -78,7 +78,7 @@ class ChatServer:
             stop_token_ids=stop_ids,
         )
         reply_ids = output_ids[0].tolist()[len(prompt_ids):]
-        reply = self.tokenizer.decode(reply_ids).strip()
+        reply = self.tokenizer.decode(reply_ids, skip_special_tokens=True).strip()
 
         return {
             "id": f"chatcmpl-{int(time.time() * 1000)}",
