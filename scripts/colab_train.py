@@ -192,9 +192,12 @@ def main():
     if args.sft:
         from data.sft_data import build_sft_messages
         from post_training.sft import sft_train
+        from inference.loader import load_model as _load_model
         print("\n" + "=" * 52)
         print("SFT: turning the model into a chat assistant")
         print("=" * 52)
+        # load the freshly pretrained model from the checkpoint
+        model, _, _ = _load_model(args.out, args.tokenizer_dir, device=device)
         messages = build_sft_messages(synthetic_n=args.sft_synthetic, seed=args.seed)
         sft_train(model, tokenizer, messages, out_dir=args.sft_out,
                   epochs=args.sft_epochs, batch_size=args.batch, device=device)
