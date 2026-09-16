@@ -73,6 +73,18 @@ def tokenize_conversations(args, tokenizer, vocab_size: int) -> str:
     print("[colab] tokenizing conversations -> training shards...")
     manifest = shard_texts(iter_conversations(), tokenizer, args.data_dir,
                            vocab_size, max_seq_len=args.seq_len, add_eos=True)
+
+    # build a separate held-out validation set (different seed -> no leakage)
+    from data.conversation.generator import DialogueGenerator
+    val_gen = DialogueGenerator(seed=args.seed + 999)
+    val_dir = os.path.join(os.path.dirname(args.data_dir), "shards_val")
+    os.makedirs(val_dir, exist_ok=True)
+    print("[colab] building validation shards...")
+    def _val_texts():
+        for _ in range(2000):
+            yield val_gen.generate()["text"]
+    shard_texts(_val_texts(), tokenizer, val_dir, vocab_size,
+                max_seq_len=args.seq_len, add_eos=True)
     return manifest
 
 
@@ -176,8 +188,13 @@ def main():
 
     from training.train import train
     from data.dataset import build_dataloader
+    import os as _os
+    val_dir = _os.path.join(_os.path.dirname(args.data_dir), "shards_val")
     train_loader = build_dataloader(args.data_dir, args.seq_len, args.batch, seed=args.seed)
-    eval_loader = build_dataloader(args.data_dir, args.seq_len, args.batch, seed=args.seed + 1)
+    if _os.path.exists(_os.path.join(val_dir, "shards_manifest.json")):
+        eval_loader = build_dataloader(val_dir, args.seq_len, args.batch, seed=args.seed)
+    else:
+        eval_loader = build_dataloader(args.data_dir, args.seq_len, args.batch, seed=args.seed + 1)
 
     print("=" * 52)
     print("MEGA-CYBER LLM — training")

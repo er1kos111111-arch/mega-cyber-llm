@@ -22,8 +22,12 @@ def main():
     parser = argparse.ArgumentParser(description="MC-LLM chat")
     parser.add_argument("--checkpoint", default="checkpoints_sft")
     parser.add_argument("--tokenizer", default="tokenizer/tokenizer_config.json")
-    parser.add_argument("--temperature", type=float, default=0.8)
-    parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--top-p", type=float, default=0.9)
+    parser.add_argument("--top-k", type=int, default=50)
+    parser.add_argument("--repetition-penalty", type=float, default=1.05)
+    parser.add_argument("--frequency-penalty", type=float, default=0.3)
+    parser.add_argument("--presence-penalty", type=float, default=0.3)
     parser.add_argument("--max-tokens", type=int, default=256)
     parser.add_argument("--system", default="Ты — MEGA-CYBER LLM, дружелюбный и полезный собеседник.")
     args = parser.parse_args()
@@ -60,7 +64,10 @@ def main():
         prompt_ids = torch.tensor([ids], dtype=torch.long, device=device)
         out = generate(model, prompt_ids, max_new_tokens=args.max_tokens,
                        eos_token_id=tokenizer.eos_token_id,
-                       temperature=args.temperature, top_p=args.top_p)
+                       temperature=args.temperature, top_p=args.top_p,
+                       top_k=args.top_k, repetition_penalty=args.repetition_penalty,
+                       frequency_penalty=args.frequency_penalty,
+                       presence_penalty=args.presence_penalty)
         new_ids = out[0].tolist()[prompt_len:]
         reply = tokenizer.decode(new_ids, skip_special_tokens=True).strip()
         messages.append({"role": "assistant", "content": reply})

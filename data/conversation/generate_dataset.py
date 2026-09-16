@@ -32,8 +32,10 @@ SHARDS_DIR = "data/conversation/shards"
 PROGRESS_FILE = "progress.json"
 
 
-def ensure_tokenizer(tokenizer_dir: str, generator: DialogueGenerator, vocab_size: int = 8192):
-    """Return a real CyberTokenizer, training one on the phrase bank if needed."""
+def ensure_tokenizer(tokenizer_dir: str, generator: DialogueGenerator, vocab_size: int = 8192,
+                     sample_dialogues: int = 8000):
+    """Return a real CyberTokenizer, training one on a large sample of
+    *generated conversations* (not just the raw phrase bank) if needed."""
     from tokenizer.tokenizer import CyberTokenizer
     cfg_path = os.path.join(tokenizer_dir, "tokenizer_config.json")
     if os.path.exists(cfg_path):
@@ -45,9 +47,14 @@ def ensure_tokenizer(tokenizer_dir: str, generator: DialogueGenerator, vocab_siz
         save_vocab, save_merges,
     )
     os.makedirs(tokenizer_dir, exist_ok=True)
-    text = generator.dump_phrase_text()
-    trainer = CyberTokenizerTrainer(vocab_size=vocab_size, min_pair_frequency=2)
-    merges = trainer.train([text] * 6)
+
+    # generate a diverse sample of conversations for tokenizer training
+    print(f"[gen] generating {sample_dialogues:,} dialogues to train the tokenizer...")
+    texts = [generator.generate()["text"] for _ in range(sample_dialogues)]
+    texts.append(generator.dump_phrase_text())  # ensure base phrases are covered
+
+    trainer = CyberTokenizerTrainer(vocab_size=vocab_size, min_pair_frequency=1)
+    merges = trainer.train(texts)
     total = NUM_BYTE_TOKENS + len(SPECIAL_TOKENS) + len(merges)
     save_vocab(os.path.join(tokenizer_dir, "vocab.json"),
                build_special_token_map(), merges, total)

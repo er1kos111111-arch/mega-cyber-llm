@@ -258,3 +258,24 @@ class CyberTokenizer:
         }
         with open(path or self.config_path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def measure_tokenizer(tokenizer, texts: List[str]) -> dict:
+    """Quantify tokenizer efficiency on a sample of text.
+
+    Returns vocab size, tokens-per-word, tokens-per-char, and the compression
+    ratio (chars per token).  Lower tokens-per-word / higher compression is
+    better (less subword fragmentation)."""
+    total_tokens = total_words = total_chars = 0
+    for t in texts:
+        total_tokens += len(tokenizer.encode(t))
+        total_words += len(t.split())
+        total_chars += len(t)
+    return {
+        "vocab_size": len(tokenizer),
+        "tokens_per_word": round(total_tokens / max(1, total_words), 3),
+        "tokens_per_char": round(total_tokens / max(1, total_chars), 3),
+        "compression_ratio": round(total_chars / max(1, total_tokens), 2),
+        "chars": total_chars,
+        "words": total_words,
+    }

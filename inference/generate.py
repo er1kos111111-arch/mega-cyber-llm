@@ -18,13 +18,24 @@ No external inference framework is used — sampling is implemented here.
 from __future__ import annotations
 
 import math
-from typing import Generator, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from model.architecture import MCLLM
 from inference.kv_cache import make_cache
+
+# A sensible preset for conversational chat generation.
+CHAT_PRESET = {
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 50,
+    "repetition_penalty": 1.05,
+    "frequency_penalty": 0.3,
+    "presence_penalty": 0.3,
+    "min_p": 0.0,
+}
 
 
 @torch.no_grad()
@@ -35,21 +46,30 @@ def _sample_token(
     top_p: float,
     min_p: float,
     repetition_penalty: float,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0,
     previous_ids: Optional[torch.Tensor] = None,
     generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     """Sample a single token from the final-row logits."""
     logits = logits[..., -1, :]  # (batch, vocab)
 
-    if repetition_penalty != 1.0 and previous_ids is not None:
-        # penalize tokens already generated in this sequence
-        for i in range(logits.size(0)):
-            seen = set(previous_ids[i].tolist())
-            for tok in seen:
-                if logits[i, tok] > 0:
-                    logits[i, tok] /= repetition_penalty
-                else:
-                    logits[i, tok] *= repetition_penalty
+    if previous_ids is not None and previous_ids.numel() > 0:
+        if repetition_penalty != 1.0:
+            for i in range(logits.size(0)):
+                seen = set(previous_ids[i].tolist())
+                for tok in seen:
+                    if logits[i, tok] > 0:
+                        logits[i, tok] /= repetition_penalty
+                    else:
+                        logits[i, tok] *= repetition_penalty
+        if frequency_penalty != 0.0 or presence_penalty != 0.0:
+            for i in range(logits.size(0)):
+                counts: Dict[int, int] = {}
+                for t in previous_ids[i].tolist():
+                    counts[t] = counts.get(t, 0) + 1
+                for tok, c in counts.items():
+                    logits[i, tok] -= presence_penalty + frequency_penalty * c
 
     if temperature <= 0.0 or temperature is None:
         return logits.argmax(dim=-1)
@@ -90,6 +110,8 @@ def generate(
     top_k: int = 0,
     top_p: float = 1.0,
     repetition_penalty: float = 1.0,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0,
     min_p: float = 0.0,
     stop_token_ids: Optional[List[int]] = None,
     seed: Optional[int] = None,
@@ -99,7 +121,8 @@ def generate(
     return list(generate_stream(
         model, input_ids, max_new_tokens=max_new_tokens, eos_token_id=eos_token_id,
         temperature=temperature, top_k=top_k, top_p=top_p,
-        repetition_penalty=repetition_penalty, min_p=min_p,
+        repetition_penalty=repetition_penalty, frequency_penalty=frequency_penalty,
+        presence_penalty=presence_penalty, min_p=min_p,
         stop_token_ids=stop_token_ids, seed=seed, use_cache=use_cache,
     ))[-1]
 
@@ -114,6 +137,8 @@ def generate_stream(
     top_k: int = 0,
     top_p: float = 1.0,
     repetition_penalty: float = 1.0,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0,
     min_p: float = 0.0,
     stop_token_ids: Optional[List[int]] = None,
     seed: Optional[int] = None,
@@ -150,9 +175,10 @@ def generate_stream(
         next_pos = input_ids.size(1)
 
     for _ in range(max_new_tokens):
-        prev_ids = generated if repetition_penalty != 1.0 else None
+        prev_ids = generated
         next_tok = _sample_token(logits, temperature, top_k, top_p, min_p,
-                                 repetition_penalty, prev_ids, generator)
+                                 repetition_penalty, frequency_penalty,
+                                 presence_penalty, prev_ids, generator)
         generated = torch.cat([generated, next_tok.unsqueeze(-1)], dim=-1)
         yield generated
 
