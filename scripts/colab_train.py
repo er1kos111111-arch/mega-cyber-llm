@@ -108,10 +108,14 @@ def main():
     # real-data mode
     p.add_argument("--real-data", action="store_true",
                    help="download real HF data instead of synthetic conversations")
-    p.add_argument("--max-rows", type=int, default=0,
+    p.add_argument("--max-rows", type=int, default=40000,
                    help="max docs per dataset in real-data mode (0 = all)")
-    p.add_argument("--max-files", type=int, default=0,
+    p.add_argument("--max-files", type=int, default=2,
                    help="max parquet files per dataset in real-data mode (0 = all)")
+    p.add_argument("--english", action="store_true",
+                   help="also download a small English subset (Russian is default)")
+    p.add_argument("--tokenizer-max-chars", type=int, default=2_000_000,
+                   help="max chars used to train the tokenizer (subsample)")
     # SFT mode
     p.add_argument("--sft", action="store_true",
                    help="run SFT after pretraining (makes it a chat assistant)")
@@ -127,8 +131,10 @@ def main():
     if args.real_data:
         # ---- Phase 1+2 (real): download -> tokenizer -> shards ----------
         from scripts.build_real_dataset import download_real_data, train_tokenizer, shard_real_data
-        download_real_data(args.raw_dir, args.max_rows, args.max_files)
-        vocab_size = train_tokenizer(args.raw_dir, args.tokenizer_dir, args.vocab_size)
+        download_real_data(args.raw_dir, args.max_rows, args.max_files,
+                           include_english=args.english)
+        vocab_size = train_tokenizer(args.raw_dir, args.tokenizer_dir,
+                                     args.vocab_size, args.tokenizer_max_chars)
         shard_real_data(args.raw_dir, args.tokenizer_dir, args.data_dir,
                         vocab_size, args.seq_len)
         data_note = f"real data (vocab {vocab_size})"

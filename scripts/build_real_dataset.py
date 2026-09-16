@@ -20,12 +20,18 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def download_real_data(raw_dir: str, max_rows: int, max_files: int) -> dict:
+def download_real_data(raw_dir: str, max_rows: int, max_files: int,
+                       include_english: bool = False) -> dict:
     from data.download import download_preset
     stats = {}
-    for name in ["wikipedia_ru", "wikipedia_en", "persona_chat_ru"]:
+    # Russian primary; English is opt-in (small fraction of the Russian amount)
+    presets = [("wikipedia_ru", 1.0), ("persona_chat_ru", 1.0)]
+    if include_english:
+        presets.append(("wikipedia_en", 0.15))
+    for name, frac in presets:
         try:
-            n = download_preset(name, out_dir=raw_dir, max_rows=max_rows,
+            rows = int(max_rows * frac) if max_rows else 0
+            n = download_preset(name, out_dir=raw_dir, max_rows=rows,
                                 max_files=max_files)
             stats[name] = n
             print(f"[real-data] {name}: {n:,} docs")
@@ -35,7 +41,8 @@ def download_real_data(raw_dir: str, max_rows: int, max_files: int) -> dict:
     return stats
 
 
-def train_tokenizer(raw_dir: str, out_dir: str, vocab_size: int) -> int:
+def train_tokenizer(raw_dir: str, out_dir: str, vocab_size: int,
+                    max_chars: int = 2_000_000) -> int:
     from scripts.train_tokenizer import iter_corpus
     from tokenizer.trainer import CyberTokenizerTrainer
     from tokenizer.vocab import (
@@ -44,8 +51,18 @@ def train_tokenizer(raw_dir: str, out_dir: str, vocab_size: int) -> int:
     )
     os.makedirs(out_dir, exist_ok=True)
     trainer = CyberTokenizerTrainer(vocab_size=vocab_size, min_pair_frequency=2)
-    print("[real-data] training CyberTokenizer on real data...")
-    merges = trainer.train(iter_corpus([raw_dir]))
+    print(f"[real-data] training CyberTokenizer on a {max_chars/1e6:.0f}M-char "
+          f"sample of real data...")
+
+    def limited():
+        total = 0
+        for text in iter_corpus([raw_dir]):
+            if total >= max_chars:
+                break
+            total += len(text)
+            yield text
+
+    merges = trainer.train(limited())
     total = NUM_BYTE_TOKENS + len(SPECIAL_TOKENS) + len(merges)
     save_vocab(os.path.join(out_dir, "vocab.json"), build_special_token_map(),
                merges, total)
