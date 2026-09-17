@@ -54,6 +54,9 @@ def sft_train(
     if model.config.num_layers >= 16:
         model.enable_gradient_checkpointing()
 
+    # never exceed the model's positional-encoding context
+    max_length = min(max_length, model.config.max_position_embeddings)
+
     n = len(messages_list)
     split = max(1, int(n * eval_frac))
     train_msgs = messages_list[split:]

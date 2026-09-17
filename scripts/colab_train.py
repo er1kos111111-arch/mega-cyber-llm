@@ -217,7 +217,8 @@ def main():
         model, _, _ = _load_model(args.out, args.tokenizer_dir, device=device)
         messages = build_sft_messages(synthetic_n=args.sft_synthetic, seed=args.seed)
         sft_train(model, tokenizer, messages, out_dir=args.sft_out,
-                  epochs=args.sft_epochs, batch_size=args.batch, device=device)
+                  epochs=args.sft_epochs, batch_size=args.batch, device=device,
+                  max_length=args.seq_len)
 
     # ---- Phase 6: chat-style demo -------------------------------------
     from inference.loader import load_model
